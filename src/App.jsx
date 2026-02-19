@@ -1,10 +1,18 @@
-const App = () => {
-  return (
-    <div className="text-red-500 bg-blue-200 max-w-6xl mx-auto p-4">
-      <p>It's a test of Tailwind CSS in a React app.</p>
-      <h1 className="text-blue-400 bg-background rounded-full">Hello, World!</h1>
-    </div>
-  );
-};
+import { Routes, Route } from "react-router-dom";
+import Home from "@/pages/Home";
+import SignIn from '@/pages/SignIn';
+import SignUp from '@/pages/SignUp';
+import About from "@/pages/About";
+import Profile from "@/pages/Profile";
+
+const App = () => (
+  <Routes>
+    <Route path="/" element={<Home />} />
+    <Route path="/signin" element={<SignIn />} />
+    <Route path="/signup" element={<SignUp />} />
+    <Route path="/about" element={<About />} />
+    <Route path="/profile" element={<Profile />} />
+  </Routes>
+);
 
 export default App;

@@ -1,6 +1,8 @@
 const Home = () => {
   return (
-    <div>Home</div>
+    <div className="text-green-500 text-3xl font-bold">
+      Home page is working
+    </div>
   );
 };
 
