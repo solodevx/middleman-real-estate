@@ -16,10 +16,21 @@ This project is designed to present property listings, company information, and 
 
 ## 🚀 Tech Stack
 
+### Frontend
 - **React** – UI library
 - **Vite** – Fast build tool and dev server
 - **Tailwind CSS** – Utility-first styling framework
 - **JavaScript (ES6+)**
+
+### Backend
+- **Node.js** – JavaScript runtime for the server
+- **Express.js** – Framework for building API endpoints
+- **MongoDB** – Database for storing application data
+- **Mongoose** – ODM for MongoDB
+- **JSON Web Tokens (JWT)** – Authentication and authorization
+- **dotenv** – Environment variable management
+- **CORS** – Enable cross-origin requests
+- **Nodemon** – Automatically restarts the server during development
 
 ---
 
@@ -34,6 +45,15 @@ src/
 ├─ App.jsx        # Root component
 └─ index.css      # Tailwind CSS imports
 ```
+---
+
+```pqsql
+server/
+ ┣ controllers/   ← Functions handling requests and responses
+ ┣ routes/        ← API endpoints for authentication, users, properties, etc.
+ ┣ models/        ← MongoDB schemas for users, properties, etc.
+ ┗ index.js       ← Entry point of the backend server
+```
 
 ---
 
@@ -42,7 +62,6 @@ src/
 ### Prerequisites
 - Node.js (v18+ recommended)
 - npm
-- Installation
 
 ### Installation
 ```bash
@@ -57,6 +76,36 @@ The app will be available at:
 http://localhost:5173
 ```
 
+---
+### Backend
+Setup Instructions
+
+1. Go to the backend folder:
+```bash
+cd server
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Create a .env file and add your environment variables:
+```ini
+MONGO_URI=your_mongodb_connection_string
+JWT_SECRET=your_jwt_secret
+PORT=5000
+```
+
+4. Start the server in development mode (auto-reload):
+```bash
+npm run dev
+```
+
+5. Start the server in production mode:
+```bash
+npm start
+```
 ---
 
 ## 🎨 Styling
