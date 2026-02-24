@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import userRouter from "./routes/user.route.js";
 import authRouter from "./routes/auth.route.js";
+import cookieParser from "cookie-parser";
 
 // read .env file and set environment variables
 dotenv.config();
@@ -20,6 +21,7 @@ mongoose.connect(MONGO_URL)
 // Middleware setup - enable CORS and parse JSON request bodies
 app.use(cors());
 app.use(express.json()); // parse JSON request bodies
+app.use(cookieParser()); // parse cookies
 
 // Test route
 app.get("/", (req, res) => {
