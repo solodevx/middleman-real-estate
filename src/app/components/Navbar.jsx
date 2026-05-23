@@ -2,22 +2,17 @@
 
 import { FaSearch } from 'react-icons/fa';
 import Link from 'next/link';
-import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
-
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-export default function Header() {
+
+export default function Navbar() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    const urlParams = new URLSearchParams(searchParams);
-    const searchTermFromUrl = urlParams.get('searchTerm');
-    if (searchTermFromUrl) {
-      setSearchTerm(searchTermFromUrl);
-    }
-  }, [searchParams]);
+  // Read directly from URL — no useEffect needed
+  const [searchTerm, setSearchTerm] = useState(
+    searchParams.get('searchTerm') || ''
+  );
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -26,14 +21,14 @@ export default function Header() {
     const searchQuery = urlParams.toString();
     router.push(`/search?${searchQuery}`);
   };
-  
+
   return (
     <header className='bg-slate-200 shadow-md'>
       <div className='flex justify-between items-center max-w-6xl mx-auto p-3'>
         <Link href='/'>
           <h1 className='font-bold text-sm sm:text-xl flex flex-wrap'>
-            <span className='text-slate-500'>Sahand</span>
-            <span className='text-slate-700'>Estate</span>
+            <span className='text-slate-500'>Your</span>
+            <span className='text-slate-700'>Brand</span>
           </h1>
         </Link>
         <form
@@ -62,16 +57,11 @@ export default function Header() {
               About
             </li>
           </Link>
-          <SignedIn>
-            <UserButton />
-          </SignedIn>
-          <SignedOut>
-            <Link href='/sign-in'>
-              <li className='hidden md:inline text-slate-700 hover:underline'>
-                Sign In
-              </li>
-            </Link>
-          </SignedOut>
+          <Link href='/search'>
+            <li className='hidden md:inline text-slate-700 hover:underline'>
+              Browse
+            </li>
+          </Link>
         </ul>
       </div>
     </header>
