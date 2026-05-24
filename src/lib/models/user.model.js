@@ -1,8 +1,13 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
+
+// Note: Better Auth manages its own user records automatically.
+// This model is for any EXTRA fields we want to store per admin
+// that Better Auth doesn't handle by default — like role.
 
 const userSchema = new mongoose.Schema(
   {
-    clerkId: {
+    // This links our record to Better Auth's user record
+    betterAuthId: {
       type: String,
       required: true,
       unique: true,
@@ -12,22 +17,22 @@ const userSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
-    firstName: {
+    name: {
       type: String,
       required: true,
     },
-    lastName: {
+    image: {
       type: String,
-      required: true,
+      default: null,
     },
-    profilePicture: {
+    role: {
       type: String,
-      required: true,
+      enum: ["admin"],
+      default: "admin",
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-const User = mongoose.models.User || mongoose.model('User', userSchema);
-
+const User = mongoose.models.User || mongoose.model("User", userSchema);
 export default User;
