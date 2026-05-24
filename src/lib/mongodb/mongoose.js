@@ -1,24 +1,30 @@
 import mongoose from 'mongoose';
 
-let initialized = false;
+const MONGODB_URI = process.env.MONGODB_URI;
 
-export const connect = async () => {
-  mongoose.set('strictQuery', true);
+if (!MONGODB_URI) {
+  throw new Error('MONGODB_URI is not defined in .env.local');
+}
 
-  if (initialized) {
-    console.log('MongoDB already connected');
-    return;
+// Cache the connection so it doesn't reconnect on every request
+let cached = global.mongoose;
+
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null };
+}
+
+export async function connectDB() {
+  // If already connected, return existing connection
+  if (cached.conn) {
+    return cached.conn;
   }
 
-  try {
-    await mongoose.connect(process.env.MONGODB_URI, {
-      dbName: 'next-estate',
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
+  if (!cached.promise) {
+    cached.promise = mongoose.connect(MONGODB_URI, {
+      bufferCommands: false,
     });
-    initialized = true;
-    console.log('MongoDB connected');
-  } catch (error) {
-    console.log('MongoDB connection error:', error);
   }
-};
+
+  cached.conn = await cached.promise;
+  return cached.conn;
+}
