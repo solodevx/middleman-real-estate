@@ -1,386 +1,520 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-
-import { app } from '../../firebase';
-
-import {
-  getStorage,
-  ref,
-  uploadBytesResumable,
-  getDownloadURL,
-} from 'firebase/storage';
-
-import { useUser } from '@clerk/nextjs';
-import { useRouter } from 'next/navigation';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 export default function CreateListing() {
-  const { isSignedIn, user, isLoaded } = useUser();
-  const [files, setFiles] = useState([]);
-  const [uploading, setUploading] = useState(false);
-  const [imageUploadError, setImageUploadError] = useState(false);
-  const [error, setError] = useState(false);
-  const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [images, setImages] = useState([]);
+  const [imageUploadLoading, setImageUploadLoading] = useState(false);
+
   const [formData, setFormData] = useState({
-    imageUrls: [],
-    name: '',
-    description: '',
-    address: '',
-    type: 'rent',
-    bedrooms: 1,
-    bathrooms: 1,
-    regularPrice: 50,
-    discountPrice: 0,
-    offer: false,
-    parking: false,
-    furnished: false,
+    title: "",
+    description: "",
+    type: "house",
+    listingFor: "sale",
+    price: "",
+    status: "active",
+    bedrooms: 0,
+    bathrooms: 0,
+    toilets: 0,
+    sizeSqm: "",
+    location: {
+      state: "",
+      city: "",
+      area: "",
+      address: "",
+    },
+    contact: {
+      phone: "",
+      whatsapp: "",
+      email: "",
+    },
   });
 
-  console.log(formData);
+  const handleChange = (e) => {
+    const { id, value } = e.target;
 
-  const handleImageSubmit = (e) => {
-    if (files.length > 0 && files.length + formData.imageUrls.length < 7) {
-      setUploading(true);
-      setImageUploadError(false);
-      const promises = [];
-      for (let i = 0; i < files.length; i++) {
-        promises.push(storeImage(files[i]));
-      }
-      Promise.all(promises)
-        .then((urls) => {
-          setFormData({
-            ...formData,
-            imageUrls: formData.imageUrls.concat(urls),
-          });
-          setImageUploadError(false);
-          setUploading(false);
-        })
-        .catch((err) => {
-          setImageUploadError('Image upload failed (2 mb max per image)');
-          setUploading(false);
-        });
+    // Handle nested fields (location and contact)
+    if (id.startsWith("location.") || id.startsWith("contact.")) {
+      const [parent, child] = id.split(".");
+      setFormData((prev) => ({
+        ...prev,
+        [parent]: { ...prev[parent], [child]: value },
+      }));
     } else {
-      setImageUploadError('You can only upload 6 images per listing');
-      setUploading(false);
+      setFormData((prev) => ({ ...prev, [id]: value }));
     }
   };
 
-  const storeImage = async (file) => {
-    return new Promise((resolve, reject) => {
-      const storage = getStorage(app);
-      const fileName = new Date().getTime() + file.name;
-      const storageRef = ref(storage, fileName);
-      const uploadTask = uploadBytesResumable(storageRef, file);
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          const progress =
-            (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          console.log(`Upload is ${progress}% done`);
-        },
-        (error) => {
-          reject(error);
-        },
-        () => {
-          getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-            resolve(downloadURL);
-          });
-        }
-      );
-    });
+  const handleImageUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+    if (files.length + images.length > 10) {
+      setError("Maximum 10 images allowed");
+      return;
+    }
+
+    setImageUploadLoading(true);
+    setError(null);
+
+    const data = new FormData();
+    files.forEach((file) => data.append("images", file));
+
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: data,
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error);
+      setImages((prev) => [...prev, ...result.imageUrls]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setImageUploadLoading(false);
+    }
   };
 
   const handleRemoveImage = (index) => {
-    setFormData({
-      ...formData,
-      imageUrls: formData.imageUrls.filter((_, i) => i !== index),
-    });
+    setImages((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleChange = (e) => {
-    if (e.target.id === 'sale' || e.target.id === 'rent') {
-      setFormData({
-        ...formData,
-        type: e.target.id,
-      });
-    }
-    if (
-      e.target.id === 'parking' ||
-      e.target.id === 'furnished' ||
-      e.target.id === 'offer'
-    ) {
-      setFormData({
-        ...formData,
-        [e.target.id]: e.target.checked,
-      });
-    }
-    if (
-      e.target.type === 'number' ||
-      e.target.type === 'text' ||
-      e.target.type === 'textarea'
-    ) {
-      setFormData({
-        ...formData,
-        [e.target.id]: e.target.value,
-      });
-    }
-  };
+  const handleSubmit = async () => {
+    setError(null);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (images.length === 0) {
+      setError("Please upload at least one image");
+      return;
+    }
+
+    setLoading(true);
+
     try {
-      if (formData.imageUrls.length < 1)
-        return setError('You must upload at least one image');
-      if (+formData.regularPrice < +formData.discountPrice)
-        return setError('Discount price must be lower than regular price');
-      setLoading(true);
-      setError(false);
-      const res = await fetch('/api/listing/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...formData,
-          userMongoId: user.publicMetadata.userMogoId,
-        }),
+      const res = await fetch("/api/listing/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...formData, images }),
       });
       const data = await res.json();
-      setLoading(false);
-      if (data.success === false) {
-        setError(data.message);
-      }
-      router.push(`/listing/${data._id}`);
-    } catch (error) {
-      setError(error.message);
+      if (!res.ok) throw new Error(data.error);
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err.message);
+    } finally {
       setLoading(false);
     }
   };
 
-  if (!isLoaded) {
-    return (
-      <h1 className='text-center text-xl my-7 font-semibold'>Loading...</h1>
-    );
-  }
-  if (!isSignedIn) {
-    return (
-      <h1 className='text-center text-xl my-7 font-semibold'>
-        You are not authorized to view this page
-      </h1>
-    );
-  }
-
-
   return (
-    <main className='p-3 max-w-4xl mx-auto'>
-      <h1 className='text-3xl font-semibold text-center my-7'>
-        Create a Listing
-      </h1>
-      <form className='flex flex-col sm:flex-row gap-4' onSubmit={handleSubmit}>
-        <div className='flex flex-col gap-4 flex-1'>
-          <input
-            type='text'
-            placeholder='Name'
-            className='border p-3 rounded-lg'
-            id='name'
-            maxLength='62'
-            minLength='10'
-            required
-            onChange={handleChange}
-            value={formData.name}
-          />
-          <textarea
-            type='text'
-            placeholder='Description'
-            className='border p-3 rounded-lg'
-            id='description'
-            required
-            onChange={handleChange}
-            value={formData.description}
-          />
-          <input
-            type='text'
-            placeholder='Address'
-            className='border p-3 rounded-lg'
-            id='address'
-            required
-            onChange={handleChange}
-            value={formData.address}
-          />
-          <div className='flex gap-6 flex-wrap'>
-            <div className='flex gap-2'>
+    <div className="min-h-screen bg-slate-50">
+      <div className="max-w-2xl mx-auto px-4 py-8">
+        <h1 className="text-2xl font-bold text-slate-700 mb-2">
+          Add New Listing
+        </h1>
+
+        {/* Step indicator */}
+        <div className="flex gap-2 mb-8">
+          {[1, 2, 3, 4].map((s) => (
+            <div
+              key={s}
+              className={`h-2 flex-1 rounded-full transition ${
+                s <= step ? "bg-slate-700" : "bg-slate-200"
+              }`}
+            />
+          ))}
+        </div>
+
+        {/* Step 1 — Basic Info */}
+        {step === 1 && (
+          <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col gap-4">
+            <h2 className="font-semibold text-slate-600">Basic Information</h2>
+
+            <div className="flex flex-col gap-1">
+              <label htmlFor="title" className="text-sm text-slate-600">
+                Property Title
+              </label>
               <input
-                type='checkbox'
-                id='sale'
-                className='w-5'
+                id="title"
+                type="text"
+                placeholder="e.g. 3 Bedroom Flat in Lekki Phase 1"
+                className="border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                value={formData.title}
                 onChange={handleChange}
-                checked={formData.type === 'sale'}
               />
-              <span>Sell</span>
             </div>
-            <div className='flex gap-2'>
-              <input
-                type='checkbox'
-                id='rent'
-                className='w-5'
+
+            <div className="flex flex-col gap-1">
+              <label htmlFor="description" className="text-sm text-slate-600">
+                Description
+              </label>
+              <textarea
+                id="description"
+                rows={4}
+                placeholder="Describe the property..."
+                className="border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                value={formData.description}
                 onChange={handleChange}
-                checked={formData.type === 'rent'}
               />
-              <span>Rent</span>
             </div>
-            <div className='flex gap-2'>
-              <input
-                type='checkbox'
-                id='parking'
-                className='w-5'
-                onChange={handleChange}
-                checked={formData.parking}
-              />
-              <span>Parking spot</span>
-            </div>
-            <div className='flex gap-2'>
-              <input
-                type='checkbox'
-                id='furnished'
-                className='w-5'
-                onChange={handleChange}
-                checked={formData.furnished}
-              />
-              <span>Furnished</span>
-            </div>
-            <div className='flex gap-2'>
-              <input
-                type='checkbox'
-                id='offer'
-                className='w-5'
-                onChange={handleChange}
-                checked={formData.offer}
-              />
-              <span>Offer</span>
-            </div>
-          </div>
-          <div className='flex flex-wrap gap-6'>
-            <div className='flex items-center gap-2'>
-              <input
-                type='number'
-                id='bedrooms'
-                min='1'
-                max='10'
-                required
-                className='p-3 border border-gray-300 rounded-lg'
-                onChange={handleChange}
-                value={formData.bedrooms}
-              />
-              <p>Beds</p>
-            </div>
-            <div className='flex items-center gap-2'>
-              <input
-                type='number'
-                id='bathrooms'
-                min='1'
-                max='10'
-                required
-                className='p-3 border border-gray-300 rounded-lg'
-                onChange={handleChange}
-                value={formData.bathrooms}
-              />
-              <p>Baths</p>
-            </div>
-            <div className='flex items-center gap-2'>
-              <input
-                type='number'
-                id='regularPrice'
-                min='50'
-                max='10000000'
-                required
-                className='p-3 border border-gray-300 rounded-lg'
-                onChange={handleChange}
-                value={formData.regularPrice}
-              />
-              <div className='flex flex-col items-center'>
-                <p>Regular price</p>
-                <span className='text-xs'>($ / month)</span>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1">
+                <label htmlFor="type" className="text-sm text-slate-600">
+                  Property Type
+                </label>
+                <select
+                  id="type"
+                  className="border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  value={formData.type}
+                  onChange={handleChange}
+                >
+                  <option value="house">House</option>
+                  <option value="flat">Flat</option>
+                  <option value="land">Land</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label htmlFor="listingFor" className="text-sm text-slate-600">
+                  Listing For
+                </label>
+                <select
+                  id="listingFor"
+                  className="border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  value={formData.listingFor}
+                  onChange={handleChange}
+                >
+                  <option value="sale">For Sale</option>
+                  <option value="rent">For Rent</option>
+                </select>
               </div>
             </div>
-            {formData.offer && (
-              <div className='flex items-center gap-2'>
-                <input
-                  type='number'
-                  id='discountPrice'
-                  min='0'
-                  max='10000000'
-                  required
-                  className='p-3 border border-gray-300 rounded-lg'
-                  onChange={handleChange}
-                  value={formData.discountPrice}
-                />
-                <div className='flex flex-col items-center'>
-                  <p>Discounted price</p>
-                  <span className='text-xs'>($ / month)</span>
+
+            <div className="flex flex-col gap-1">
+              <label htmlFor="price" className="text-sm text-slate-600">
+                Price (₦)
+              </label>
+              <input
+                id="price"
+                type="number"
+                placeholder="e.g. 5000000"
+                className="border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                value={formData.price}
+                onChange={handleChange}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Step 2 — Property Details */}
+        {step === 2 && (
+          <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col gap-4">
+            <h2 className="font-semibold text-slate-600">Property Details</h2>
+
+            {formData.type !== "land" && (
+              <div className="grid grid-cols-3 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="bedrooms" className="text-sm text-slate-600">
+                    Bedrooms
+                  </label>
+                  <input
+                    id="bedrooms"
+                    type="number"
+                    min="0"
+                    className="border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                    value={formData.bedrooms}
+                    onChange={handleChange}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="bathrooms" className="text-sm text-slate-600">
+                    Bathrooms
+                  </label>
+                  <input
+                    id="bathrooms"
+                    type="number"
+                    min="0"
+                    className="border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                    value={formData.bathrooms}
+                    onChange={handleChange}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="toilets" className="text-sm text-slate-600">
+                    Toilets
+                  </label>
+                  <input
+                    id="toilets"
+                    type="number"
+                    min="0"
+                    className="border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                    value={formData.toilets}
+                    onChange={handleChange}
+                  />
                 </div>
               </div>
             )}
-          </div>
-        </div>
-        <div className='flex flex-col flex-1 gap-4'>
-          <p className='font-semibold'>
-            Images:
-            <span className='font-normal text-gray-600 ml-2'>
-              The first image will be the cover (max 6)
-            </span>
-          </p>
-          <div className='flex gap-4'>
-            <input
-              className='p-3 border border-gray-300 rounded w-full'
-              type='file'
-              id='images'
-              accept='image/*'
-              multiple
-              onChange={(e) => {
-                setFiles(e.target.files);
-              }}
-            />
-            <button
-              disabled={uploading}
-              onClick={handleImageSubmit}
-              className='p-3 text-green-700 border border-green-700 rounded uppercase hover:shadow-lg disabled:opacity-80'
-            >
-              {uploading ? 'Uploading...' : 'Upload'}
-            </button>
-          </div>
-          <p className='text-red-700 text-sm'>
-            {imageUploadError && imageUploadError}
-          </p>
-          {formData.imageUrls.length > 0 &&
-            formData.imageUrls.map((url, index) => (
-              <div
-                key={url}
-                className='flex justify-between p-3 border items-center'
+
+            <div className="flex flex-col gap-1">
+              <label htmlFor="sizeSqm" className="text-sm text-slate-600">
+                Size (sqm) — optional
+              </label>
+              <input
+                id="sizeSqm"
+                type="number"
+                min="0"
+                placeholder="e.g. 120"
+                className="border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                value={formData.sizeSqm}
+                onChange={handleChange}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label htmlFor="status" className="text-sm text-slate-600">
+                Status
+              </label>
+              <select
+                id="status"
+                className="border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                value={formData.status}
+                onChange={handleChange}
               >
-                <img
-                  src={url}
-                  alt='listing image'
-                  className='w-20 h-20 object-contain rounded-lg'
-                />
-                <button
-                  type='button'
-                  onClick={() => handleRemoveImage(index)}
-                  className='p-3 text-red-700 rounded-lg uppercase hover:opacity-75'
+                <option value="active">Active</option>
+                <option value="pending">Pending</option>
+                <option value="sold">Sold</option>
+                <option value="rented">Rented</option>
+                <option value="expired">Expired</option>
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3 — Location & Contact */}
+        {step === 3 && (
+          <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col gap-4">
+            <h2 className="font-semibold text-slate-600">Location & Contact</h2>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="location.state"
+                  className="text-sm text-slate-600"
                 >
-                  Delete
-                </button>
+                  State
+                </label>
+                <select
+                  id="location.state"
+                  className="border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  value={formData.location.state}
+                  onChange={handleChange}
+                >
+                  <option value="">Select state</option>
+                  <option value="Lagos">Lagos</option>
+                  <option value="Abuja">Abuja</option>
+                  <option value="Rivers">Rivers</option>
+                  <option value="Oyo">Oyo</option>
+                </select>
               </div>
-            ))}
-          <button
-            className='p-3 bg-slate-700 text-white rounded-lg uppercase hover:opacity-95 disabled:opacity-80'
-            disabled={loading || uploading}
-          >
-            {loading ? 'Creating...' : 'Create Listing'}
-          </button>
-          {error && <p className='text-red-700 text-sm'>{error}</p>}
+
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="location.city"
+                  className="text-sm text-slate-600"
+                >
+                  City
+                </label>
+                <input
+                  id="location.city"
+                  type="text"
+                  placeholder="e.g. Lekki"
+                  className="border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  value={formData.location.city}
+                  onChange={handleChange}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label htmlFor="location.area" className="text-sm text-slate-600">
+                Area / Neighbourhood
+              </label>
+              <input
+                id="location.area"
+                type="text"
+                placeholder="e.g. Lekki Phase 1"
+                className="border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                value={formData.location.area}
+                onChange={handleChange}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label
+                htmlFor="location.address"
+                className="text-sm text-slate-600"
+              >
+                Full Address — optional
+              </label>
+              <input
+                id="location.address"
+                type="text"
+                placeholder="e.g. 12 Admiralty Way"
+                className="border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                value={formData.location.address}
+                onChange={handleChange}
+              />
+            </div>
+
+            <hr className="border-slate-100" />
+            <h2 className="font-semibold text-slate-600">Contact Details</h2>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="contact.phone"
+                  className="text-sm text-slate-600"
+                >
+                  Phone Number
+                </label>
+                <input
+                  id="contact.phone"
+                  type="tel"
+                  placeholder="e.g. 08012345678"
+                  className="border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  value={formData.contact.phone}
+                  onChange={handleChange}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="contact.whatsapp"
+                  className="text-sm text-slate-600"
+                >
+                  WhatsApp Number
+                </label>
+                <input
+                  id="contact.whatsapp"
+                  type="tel"
+                  placeholder="e.g. 08012345678"
+                  className="border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  value={formData.contact.whatsapp}
+                  onChange={handleChange}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label htmlFor="contact.email" className="text-sm text-slate-600">
+                Email — optional
+              </label>
+              <input
+                id="contact.email"
+                type="email"
+                placeholder="contact@example.com"
+                className="border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+                value={formData.contact.email}
+                onChange={handleChange}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Step 4 — Images */}
+        {step === 4 && (
+          <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col gap-4">
+            <h2 className="font-semibold text-slate-600">Property Images</h2>
+            <p className="text-xs text-slate-400">
+              Upload up to 10 images. First image will be the cover photo.
+            </p>
+
+            <label className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center cursor-pointer hover:border-slate-400 transition">
+              <input
+                type="file"
+                multiple
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageUpload}
+              />
+              {imageUploadLoading ? (
+                <p className="text-slate-400 text-sm">Uploading...</p>
+              ) : (
+                <p className="text-slate-400 text-sm">
+                  Click to select images or drag and drop
+                </p>
+              )}
+            </label>
+
+            {images.length > 0 && (
+              <div className="grid grid-cols-3 gap-3">
+                {images.map((url, index) => (
+                  <div key={index} className="relative">
+                    <Image
+                      src={url}
+                      alt={`Property ${index + 1}`}
+                      width={300}
+                      height={96}
+                      className="w-full h-24 object-cover rounded-lg"
+                    />
+                    {index === 0 && (
+                      <span className="absolute top-1 left-1 bg-slate-700 text-white text-xs px-2 py-0.5 rounded">
+                        Cover
+                      </span>
+                    )}
+                    <button
+                      onClick={() => handleRemoveImage(index)}
+                      className="absolute top-1 right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <p className="text-red-500 text-sm bg-red-50 p-3 rounded-lg mt-4">
+            {error}
+          </p>
+        )}
+
+        {/* Navigation Buttons */}
+        <div className="flex justify-between mt-6">
+          {step > 1 && (
+            <button
+              onClick={() => setStep((s) => s - 1)}
+              className="px-6 py-3 border border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-100 transition"
+            >
+              Back
+            </button>
+          )}
+          {step < 4 ? (
+            <button
+              onClick={() => setStep((s) => s + 1)}
+              className="ml-auto px-6 py-3 bg-slate-700 text-white rounded-lg text-sm hover:bg-slate-600 transition"
+            >
+              Next
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={loading}
+              className="ml-auto px-6 py-3 bg-slate-700 text-white rounded-lg text-sm hover:bg-slate-600 transition disabled:opacity-50"
+            >
+              {loading ? "Publishing..." : "Publish Listing"}
+            </button>
+          )}
         </div>
-      </form>
-    </main>
+      </div>
+    </div>
   );
 }
