@@ -1,39 +1,46 @@
-import Listing from '../../../../lib/models/listing.model.js';
-import { connect } from '../../../../lib/mongodb/mongoose.js';
-import { currentUser } from '@clerk/nextjs/server';
-export const POST = async (req) => {
-  const user = await currentUser();
+import { NextResponse } from 'next/server';
+import { connectDB } from '@/lib/mongodb/mongoose';
+import Listing from '@/lib/models/listing.model';
+import { auth } from '@/lib/auth';
+import slugify from 'slugify';
+
+export async function POST(request) {
   try {
-    await connect();
-    const data = await req.json();
-    if (!user || user.publicMetadata.userMogoId !== data.userMongoId) {
-      return new Response('Unauthorized', {
-        status: 401,
-      });
+    // Check session — only admins can create
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
+
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 });
     }
-    const newListing = await Listing.create({
-      userRef: user.publicMetadata.userMogoId,
-      name: data.name,
-      description: data.description,
-      address: data.address,
-      regularPrice: data.regularPrice,
-      discountPrice: data.discountPrice,
-      bathrooms: data.bathrooms,
-      bedrooms: data.bedrooms,
-      furnished: data.furnished,
-      parking: data.parking,
-      type: data.type,
-      offer: data.offer,
-      imageUrls: data.imageUrls,
+
+    await connectDB();
+    const body = await request.json();
+
+    // Generate SEO slug from title
+    const slug = slugify(body.title, {
+      lower: true,
+      strict: true,
     });
-    await newListing.save();
-    return new Response(JSON.stringify(newListing), {
-      status: 200,
+
+    // Check slug doesn't already exist
+    const existing = await Listing.findOne({ slug });
+    if (existing) {
+      return NextResponse.json(
+        { error: 'A listing with this title already exists' },
+        { status: 400 }
+      );
+    }
+
+    const listing = await Listing.create({
+      ...body,
+      slug,
+      postedBy: [session.user.id],
     });
+
+    return NextResponse.json(listing, { status: 201 });
   } catch (error) {
-    console.log('Error creating post:', error);
-    return new Response('Error creating post', {
-      status: 500,
-    });
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
-};
+}

@@ -1,44 +1,53 @@
-import Listing from '../../../../lib/models/listing.model.js';
-import { connect } from '../../../../lib/mongodb/mongoose.js';
-import { currentUser } from '@clerk/nextjs/server';
-export const POST = async (req) => {
-  const user = await currentUser();
+import { NextResponse } from 'next/server';
+import { connectDB } from '@/lib/mongodb/mongoose';
+import Listing from '@/lib/models/listing.model';
+import { auth } from '@/lib/auth';
+import slugify from 'slugify';
+
+export async function PUT(request) {
   try {
-    await connect();
-    const data = await req.json();
-    if (!user || user.publicMetadata.userMogoId !== data.userMongoId) {
-      return new Response('Unauthorized', {
-        status: 401,
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
+
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 });
+    }
+
+    await connectDB();
+    const body = await request.json();
+    const { id, ...updates } = body;
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Listing ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Regenerate slug if title changed
+    if (updates.title) {
+      updates.slug = slugify(updates.title, {
+        lower: true,
+        strict: true,
       });
     }
-    const newListing = await Listing.findByIdAndUpdate(
-      data.listingId,
-      {
-        $set: {
-          name: data.name,
-          description: data.description,
-          address: data.address,
-          regularPrice: data.regularPrice,
-          discountPrice: data.discountPrice,
-          bathrooms: data.bathrooms,
-          bedrooms: data.bedrooms,
-          furnished: data.furnished,
-          parking: data.parking,
-          type: data.type,
-          offer: data.offer,
-          imageUrls: data.imageUrls,
-        },
-      },
-      { new: true }
+
+    const listing = await Listing.findByIdAndUpdate(
+      id,
+      { $set: updates },
+      { new: true } // return updated document
     );
-    await newListing.save();
-    return new Response(JSON.stringify(newListing), {
-      status: 200,
-    });
+
+    if (!listing) {
+      return NextResponse.json(
+        { error: 'Listing not found' },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(listing);
   } catch (error) {
-    console.log('Error creating listing:', error);
-    return new Response('Error creating listing', {
-      status: 500,
-    });
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
-};
+}

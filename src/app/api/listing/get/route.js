@@ -1,49 +1,64 @@
-import Listing from '../../../../lib/models/listing.model.js';
-import { connect } from '../../../../lib/mongodb/mongoose.js';
-export const POST = async (req) => {
-  await connect();
-  const data = await req.json();
+import { NextResponse } from 'next/server';
+import { connectDB } from '@/lib/mongodb/mongoose';
+import Listing from '@/lib/models/listing.model';
+
+export async function POST(request) {
   try {
-    const startIndex = parseInt(data.startIndex) || 0;
-    const limit = parseInt(data.limit) || 9;
-    const sortDirection = data.order === 'asc' ? 1 : -1;
-    let offer = data.offer;
-    if (offer === undefined || offer === 'false') {
-      offer = { $in: [false, true] };
-    }
-    let furnished = data.furnished;
-    if (furnished === undefined || furnished === 'false') {
-      furnished = { $in: [false, true] };
-    }
-    let parking = data.parking;
-    if (parking === undefined || parking === 'false') {
-      parking = { $in: [false, true] };
-    }
-    let type = data.type;
-    if (type === undefined || type === 'all') {
-      type = { $in: ['sale', 'rent'] };
-    }
-    const listings = await Listing.find({
-      ...(data.userId && { userId: data.userId }),
-      ...(data.listingId && { _id: data.listingId }),
-      ...(data.searchTerm && {
-        $or: [
-          { name: { $regex: data.searchTerm, $options: 'i' } },
-          { description: { $regex: data.searchTerm, $options: 'i' } },
-        ],
-      }),
-      offer,
-      furnished,
-      parking,
+    await connectDB();
+    const body = await request.json();
+
+    const {
+      searchTerm,
       type,
-    })
-      .sort({ updatedAt: sortDirection })
-      .skip(startIndex)
-      .limit(limit);
-    return new Response(JSON.stringify(listings), {
-      status: 200,
+      listingFor,
+      status = 'active',
+      location,
+      minPrice,
+      maxPrice,
+      bedrooms,
+      limit = 9,
+      page = 1,
+      sort = 'createdAt',
+      order = 'desc',
+    } = body;
+
+    // Build query dynamically
+    const query = {};
+
+    if (searchTerm) {
+      query.$text = { $search: searchTerm };
+    }
+    if (type) query.type = type;
+    if (listingFor) query.listingFor = listingFor;
+    if (status) query.status = status;
+    if (bedrooms) query.bedrooms = { $gte: Number(bedrooms) };
+    if (minPrice || maxPrice) {
+      query.price = {};
+      if (minPrice) query.price.$gte = Number(minPrice);
+      if (maxPrice) query.price.$lte = Number(maxPrice);
+    }
+    if (location?.state) query['location.state'] = location.state;
+    if (location?.city) query['location.city'] = location.city;
+    if (location?.area) query['location.area'] = location.area;
+
+    const skip = (Number(page) - 1) * Number(limit);
+    const sortObj = { [sort]: order === 'desc' ? -1 : 1 };
+
+    const [listings, total] = await Promise.all([
+      Listing.find(query)
+        .sort(sortObj)
+        .limit(Number(limit))
+        .skip(skip),
+      Listing.countDocuments(query),
+    ]);
+
+    return NextResponse.json({
+      listings,
+      total,
+      page: Number(page),
+      totalPages: Math.ceil(total / Number(limit)),
     });
   } catch (error) {
-    console.log('Error getting posts:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
-};
+}
