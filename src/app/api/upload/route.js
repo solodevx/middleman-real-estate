@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server';
-import { v2 as cloudinary } from 'cloudinary';
-import { auth } from '@/lib/auth';
+import { NextResponse } from "next/server";
+import { v2 as cloudinary } from "cloudinary";
+import { auth } from "@/lib/auth";
 
 cloudinary.config({
   cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
@@ -15,16 +15,16 @@ export async function POST(request) {
     });
 
     if (!session) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
     }
 
     const formData = await request.formData();
-    const files = formData.getAll('images');
+    const files = formData.getAll("images");
 
     if (!files || files.length === 0) {
       return NextResponse.json(
-        { error: 'No images provided' },
-        { status: 400 }
+        { error: "No images provided" },
+        { status: 400 },
       );
     }
 
@@ -37,18 +37,18 @@ export async function POST(request) {
         cloudinary.uploader
           .upload_stream(
             {
-              folder: 'middleman-real-estate', // organises uploads in Cloudinary
-              resource_type: 'image',
+              folder: "middleman-real-estate", // organises uploads in Cloudinary
+              resource_type: "image",
               transformation: [
-                { width: 1280, height: 720, crop: 'fill' }, // standardise size
-                { quality: 'auto' },                         // auto compress
-                { fetch_format: 'auto' },                    // serve webp where supported
+                { width: 1920, crop: "scale" },
+                { quality: "auto:good" },
+                { fetch_format: "auto" },
               ],
             },
             (error, result) => {
               if (error) reject(error);
               else resolve(result.secure_url);
-            }
+            },
           )
           .end(buffer);
       });

@@ -459,8 +459,9 @@ export default function CreateListing() {
                       src={url}
                       alt={`Property ${index + 1}`}
                       width={300}
-                      height={96}
+                      height={200}
                       className="w-full h-24 object-cover rounded-lg"
+                      style={{ width: "100%", height: "auto" }}
                     />
                     {index === 0 && (
                       <span className="absolute top-1 left-1 bg-slate-700 text-white text-xs px-2 py-0.5 rounded">
